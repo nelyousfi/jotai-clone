@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react'
-import { atom, useAtom } from 'jotai'
+import { atom, useAtom, Provider, Atom } from 'jotai'
+import { useAtomDevtools } from 'jotai/devtools'
 
 const countAtom = atom(0)
 const doubleCountAtom = atom((get) => get(countAtom) * 2)
@@ -26,11 +27,23 @@ const fetchTodoAtom = atom(
     }
 )
 
+if (process.env.NODE_ENV !== 'production') {
+    countAtom.debugLabel = 'count'
+}
+
+const createInitialValues = () => {
+    const initialValues: (readonly [Atom<unknown>, unknown])[] = [
+        [countAtom, 20],
+    ]
+    return initialValues
+}
+
 function Counter() {
     const [count, setCount] = useAtom(countAtom)
     const [, decrementCount] = useAtom(decrementCountAtom)
     const [doubleCount] = useAtom(doubleCountAtom)
     const [, multiplyCount] = useAtom(multiplyCountAtom)
+    useAtomDevtools(countAtom)
 
     return (
         <div>
@@ -53,14 +66,16 @@ function App() {
     const [todo, fetchTodo] = useAtom(fetchTodoAtom)
 
     return (
-        <div className="App">
-            <Counter />
-            <p style={{ color: 'red' }}>{JSON.stringify(todo, null, 2)}</p>
-            <button onClick={fetchTodo}>Fetch Todo</button>
-            <Suspense fallback={<p>Loading ...</p>}>
-                <Status />
-            </Suspense>
-        </div>
+        <Provider initialValues={createInitialValues()}>
+            <div className="App">
+                <Counter />
+                <p style={{ color: 'red' }}>{JSON.stringify(todo, null, 2)}</p>
+                <button onClick={fetchTodo}>Fetch Todo</button>
+                <Suspense fallback={<p>Loading ...</p>}>
+                    <Status />
+                </Suspense>
+            </div>
+        </Provider>
     )
 }
 
