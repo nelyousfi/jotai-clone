@@ -26,6 +26,12 @@ const fetchTodoAtom = atom(
         set(todoAtom, await response.json())
     }
 )
+const atoms = [countAtom, doubleCountAtom]
+// @ts-ignore
+const sumCountAtom = atom<number>((get) =>
+    // @ts-ignore
+    atoms.map(get).reduce((acc, count) => acc + count, 0)
+)
 
 if (process.env.NODE_ENV !== 'production') {
     countAtom.debugLabel = 'count'
@@ -42,6 +48,7 @@ function Counter() {
     const [count, setCount] = useAtom(countAtom)
     const [, decrementCount] = useAtom(decrementCountAtom)
     const [doubleCount] = useAtom(doubleCountAtom)
+    const [sumCount] = useAtom(sumCountAtom)
     const [, multiplyCount] = useAtom(multiplyCountAtom)
     useAtomDevtools(countAtom)
 
@@ -49,6 +56,7 @@ function Counter() {
         <div>
             <p>{count}</p>
             <p>{doubleCount}</p>
+            <p>{sumCount}</p>
             <button onClick={() => setCount((c) => c + 1)}>increment</button>
             <button onClick={() => decrementCount()}>decrement</button>
             <button onClick={() => multiplyCount(10)}>multiply</button>
