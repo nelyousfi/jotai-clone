@@ -1,89 +1,154 @@
-import React, { Suspense } from 'react'
-import { atom, useAtom, Provider, Atom } from 'jotai'
-import { useAtomDevtools } from 'jotai/devtools'
+import { useReducer } from 'react'
+
+type Atom<Value> = {
+    init: Value
+    read: Read<Value>
+    toString: () => string
+}
+
+type WritableAtom<Value, Update, Result> = Atom<Value> & {
+    write: Write<Update, Result>
+}
+
+type Getter = <Value>(atom: Atom<Value>) => Value
+
+type Setter = <Value, Result>(atom: Atom<Value>, result: Result) => Result
+
+type Read<Value> = (getter: Getter) => Value
+
+type Write<Update, Result> = (
+    get: Getter,
+    set: Setter,
+    update: Update
+) => Result
+
+let keyCount = 0
+function atom<Value, Update, Result>(
+    read: Value | Read<Value>,
+    write?: Write<Update, Result>
+) {
+    const key = `atom${++keyCount}`
+    const config = {
+        toString: () => key,
+    } as WritableAtom<Value, Update, Result>
+    if (typeof read === 'function') {
+        config.read = read as Read<Value>
+    } else {
+        config.init = read
+        config.read = (get) => get(config)
+        config.write = (get, set, update) =>
+            set(
+                config,
+                typeof update === 'function' ? update(get(config)) : update
+            )
+    }
+    if (write) {
+        config.write = write
+    }
+    return config
+}
+
+const store: Map<string, Atom<any>> = new Map()
+
+function getter<Value>(atom: Atom<Value>) {
+    const key = atom.toString()
+    let value = store.get(key)
+    if (value === undefined) {
+        value = atom.init
+    }
+    return value
+}
+
+function setter<Value, Result>(atom: Atom<Value>, result: Result) {
+    store.set(atom.toString(), result)
+}
+
+const useAtom = <Value, Update, Result>(
+    atom: WritableAtom<Value, Update, Result>
+) => {
+    const [, rerender] = useReducer((x) => x + 1, 0)
+
+    return [
+        atom.read(getter),
+        (update: Update) => {
+            atom.write(getter, setter, update)
+            rerender()
+        },
+    ]
+}
 
 const countAtom = atom(0)
-const doubleCountAtom = atom((get) => get(countAtom) * 2)
-const urlAtom = atom('https://jsonplaceholder.typicode.com/todos/1')
-const fetchUrlAtom = atom(async (get) => {
-    const response = await fetch(get(urlAtom))
-    return await response.json()
-})
-const decrementCountAtom = atom(
+
+const incrementCountAtomInternal = atom(
     (get) => get(countAtom),
-    (get, set) => set(countAtom, get(countAtom) - 1)
-)
-const multiplyCountAtom = atom(null, (get, set, by: number) =>
-    set(countAtom, get(countAtom) * by)
-)
-const todoAtom = atom(undefined)
-const fetchTodoAtom = atom(
-    (get) => get(todoAtom),
-    async (get, set) => {
-        const response = await fetch(
-            'https://jsonplaceholder.typicode.com/todos/1'
-        )
-        set(todoAtom, await response.json())
+    (get, set) => {
+        set(countAtom, get(countAtom) + 1)
     }
 )
-const atoms = [countAtom, doubleCountAtom]
-// @ts-ignore
-const sumCountAtom = atom<number>((get) =>
-    // @ts-ignore
-    atoms.map(get).reduce((acc, count) => acc + count, 0)
+
+const incrementCountAtomExternalFunction = atom(
+    (get) => get(countAtom),
+    (get, set, update: (value: number) => number) => {
+        set(countAtom, update(get(countAtom)))
+    }
 )
 
-if (process.env.NODE_ENV !== 'production') {
-    countAtom.debugLabel = 'count'
-}
+const incrementCountAtomExternalValue = atom(
+    (get) => get(countAtom),
+    (get, set, update: (value: number) => number) => {
+        set(countAtom, update)
+    }
+)
 
-const createInitialValues = () => {
-    const initialValues: (readonly [Atom<unknown>, unknown])[] = [
-        [countAtom, 20],
-    ]
-    return initialValues
-}
+const App = () => {
+    const [countValue] = useAtom(countAtom)
 
-function Counter() {
-    const [count, setCount] = useAtom(countAtom)
-    const [, decrementCount] = useAtom(decrementCountAtom)
-    const [doubleCount] = useAtom(doubleCountAtom)
-    const [sumCount] = useAtom(sumCountAtom)
-    const [, multiplyCount] = useAtom(multiplyCountAtom)
-    useAtomDevtools(countAtom)
+    const [incrementCountInternalValue, incrementCountInternal] = useAtom(
+        incrementCountAtomInternal
+    )
+
+    const [
+        incrementCountExternalFunctionValue,
+        incrementCountExternalFunction,
+    ] = useAtom(incrementCountAtomExternalFunction)
+
+    const [incrementCountExternalValueValue, incrementCountExternalValue] =
+        useAtom(incrementCountAtomExternalValue)
 
     return (
         <div>
-            <p>{count}</p>
-            <p>{doubleCount}</p>
-            <p>{sumCount}</p>
-            <button onClick={() => setCount((c) => c + 1)}>increment</button>
-            <button onClick={() => decrementCount()}>decrement</button>
-            <button onClick={() => multiplyCount(10)}>multiply</button>
+            <p>incrementCountInternalValue: {incrementCountInternalValue}</p>
+            <p>
+                incrementCountExternalFunctionValue:{' '}
+                {incrementCountExternalFunctionValue}
+            </p>
+            <p>
+                incrementCountExternalValueValue:{' '}
+                {incrementCountExternalValueValue}
+            </p>
+            <p>count: {countValue}</p>
+            <button
+                onClick={() => {
+                    incrementCountInternal()
+                }}
+            >
+                incrementCountInternalValue
+            </button>
+            <button
+                onClick={() => {
+                    incrementCountExternalFunction((v: number) => v + 2)
+                }}
+            >
+                incrementCountExternalFunction
+            </button>
+            <button
+                onClick={() => {
+                    incrementCountExternalValue(0)
+                }}
+            >
+                incrementCountExternalValueValue
+            </button>
         </div>
-    )
-}
-
-function Status() {
-    const [json] = useAtom(fetchUrlAtom)
-
-    return <div>{JSON.stringify(json, undefined, 2)}</div>
-}
-
-function App() {
-    const [todo, fetchTodo] = useAtom(fetchTodoAtom)
-
-    return (
-        <Provider initialValues={createInitialValues()}>
-            <div className="App">
-                <Counter />
-                <p style={{ color: 'red' }}>{JSON.stringify(todo, null, 2)}</p>
-                <button onClick={fetchTodo}>Fetch Todo</button>
-                <Suspense fallback={<p>Loading ...</p>}>
-                    <Status />
-                </Suspense>
-            </div>
-        </Provider>
     )
 }
 
